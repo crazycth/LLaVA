@@ -59,6 +59,11 @@ class ModelArguments:
     mm_use_im_patch_token: bool = field(default=True)
     mm_vision_select_feature: Optional[str] = field(default="patch")
 
+    perceiver_token_num: Optional[int] = field(default=32)   
+    perceiver_max_frames: Optional[int] = field(default=22)   
+    perceiver_max_image: Optional[int] = field(default=4)   
+
+
 
 @dataclass
 class DataArguments:
@@ -311,13 +316,15 @@ def preprocess_multimodal(
     for source in sources:
         for sentence in source:
             if DEFAULT_IMAGE_TOKEN in sentence['value']:
-                sentence['value'] = sentence['value'].replace(DEFAULT_IMAGE_TOKEN, '').strip()
-                sentence['value'] = DEFAULT_IMAGE_TOKEN + '\n' + sentence['value']
-                sentence['value'] = sentence['value'].strip()
+                # sentence['value'] = sentence['value'].replace(DEFAULT_IMAGE_TOKEN, '').strip()
+                # sentence['value'] = DEFAULT_IMAGE_TOKEN + '\n' + sentence['value']
+                # sentence['value'] = sentence['value'].strip()
                 if "mmtag" in conversation_lib.default_conversation.version:
+                    # not this path
                     sentence['value'] = sentence['value'].replace(DEFAULT_IMAGE_TOKEN, '<Image>' + DEFAULT_IMAGE_TOKEN + '</Image>')
             replace_token = DEFAULT_IMAGE_TOKEN
             if data_args.mm_use_im_start_end:
+                # not this path
                 replace_token = DEFAULT_IM_START_TOKEN + replace_token + DEFAULT_IM_END_TOKEN
             sentence["value"] = sentence["value"].replace(DEFAULT_IMAGE_TOKEN, replace_token)
 
@@ -620,6 +627,7 @@ def preprocess(
 
     return dict(input_ids=input_ids, labels=targets)
 
+import pydicom
 
 class LazySupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
@@ -661,27 +669,40 @@ class LazySupervisedDataset(Dataset):
             sources = [sources]
         assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
         if 'image' in sources[0]:
-            image_file = self.list_data_dict[i]['image']
+            images = []
+            image_files = self.list_data_dict[i]['image']
             image_folder = self.data_args.image_folder
             processor = self.data_args.image_processor
-            image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
-            if self.data_args.image_aspect_ratio == 'pad':
-                def expand2square(pil_img, background_color):
-                    width, height = pil_img.size
-                    if width == height:
-                        return pil_img
-                    elif width > height:
-                        result = Image.new(pil_img.mode, (width, width), background_color)
-                        result.paste(pil_img, (0, (width - height) // 2))
-                        return result
+
+            for each_image in image_files:
+                images_each = []
+                for image_file in each_image:
+                    dcm = pydicom.dcmread(os.path.join(image_folder, image_file))
+                    image = Image.fromarray(dcm.pixel_array).convert('RGB')
+
+                    if self.data_args.image_aspect_ratio == 'pad':
+                        def expand2square(pil_img, background_color):
+                            width, height = pil_img.size
+                            if width == height:
+                                return pil_img
+                            elif width > height:
+                                result = Image.new(pil_img.mode, (width, width), background_color)
+                                result.paste(pil_img, (0, (width - height) // 2))
+                                return result
+                            else:
+                                result = Image.new(pil_img.mode, (height, height), background_color)
+                                result.paste(pil_img, ((height - width) // 2, 0))
+                                return result
+                        image = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
+                        image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
                     else:
-                        result = Image.new(pil_img.mode, (height, height), background_color)
-                        result.paste(pil_img, ((height - width) // 2, 0))
-                        return result
-                image = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
-                image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
-            else:
-                image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+                        image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+                    image = image.unsqueeze(0)
+                    images_each.append(image)
+                images_each = torch.cat([image for image in images_each], dim = 0)
+                images_each = images_each.unsqueeze(0)
+                images.append(images_each)
+            images = torch.cat([image for image in images], dim=0)
             sources = preprocess_multimodal(
                 copy.deepcopy([e["conversations"] for e in sources]),
                 self.data_args)
