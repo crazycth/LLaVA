@@ -103,7 +103,7 @@ class LlavaMetaForCausalLM(ABC):
         return image_features
 
     def perceiver_image_features(self, image_feature):
-        image_feature = self.get_model().perceiver(image_feature.unsqueeze(0)).squezze(0)
+        image_feature = self.get_model().perceiver(image_feature.unsqueeze(0)).squeeze(0)
 
         return image_feature
 
@@ -115,7 +115,9 @@ class LlavaMetaForCausalLM(ABC):
             if past_key_values is not None and vision_tower is not None and images is not None and input_ids.shape[1] == 1:
                 attention_mask = torch.ones((attention_mask.shape[0], past_key_values[-1][-1].shape[-2] + 1), dtype=attention_mask.dtype, device=attention_mask.device)
             return input_ids, attention_mask, past_key_values, None, labels
-
+        
+        # print(f"[INFO] images: {images}")
+        # print(f"[INFO] images: {images.ndim}")
         if type(images) is list or images.ndim == 6:
             # medical image this path
             # len(images) = batch_size
@@ -128,6 +130,8 @@ class LlavaMetaForCausalLM(ABC):
             # torch.size([2, 22，3, 336, 336]) 2张22层3D
             # torch.size([1, 1, 3, 336, 336])  1张2D
             # torch.size([2, 1, 3, 336, 336])  2张2D
+
+            # print("[INFO] right branch!")
             
             concat_images = torch.cat([image.flatten(0,1) for image in images], dim = 0)
             # torch.size([69, 3, 336, 336])
@@ -160,6 +164,7 @@ class LlavaMetaForCausalLM(ABC):
             # torch.size([2，32，4096])
 
         else:
+            # print(f"[INFO] wrong branch!")
             image_features = self.encode_images(images)
 
         new_input_embeds = []
@@ -189,7 +194,7 @@ class LlavaMetaForCausalLM(ABC):
 
             image_num_idx = 0
             while image_token_indices.numel() > 0:
-                cur_image_features = image_features[cur_image_idx][image_num_idx,:,:]
+                cur_image_features = image_features[batch_idx][image_num_idx,:,:]
                 image_token_start = image_token_indices[0]
                 if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
                     # not this path
@@ -204,6 +209,7 @@ class LlavaMetaForCausalLM(ABC):
                         cur_labels = cur_labels[image_token_start+2:]
                 else:
                     # this path
+                    # print("true path")
                     cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start]))
                     cur_new_input_embeds.append(cur_image_features)
                     if labels is not None:
