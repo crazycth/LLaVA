@@ -24,6 +24,19 @@ def load_image(image_file):
     return image
 
 
+def debug_test(args):
+    # Model
+    disable_torch_init()
+
+    model_name = get_model_name_from_path(args.model_path)
+    tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
+
+    print(model)
+
+    for name,para in model.named_parameters():
+        print(name, para)
+
+
 def main(args):
     # Model
     disable_torch_init()
@@ -52,6 +65,9 @@ def main(args):
         roles = conv.roles
 
     image = load_image(args.image_file)
+
+    print(f"[DEBUG] image_processor: {image_processor}")
+
     # Similar operation in model_worker.py
     image_tensor = process_images([image], image_processor, args)
     if type(image_tensor) is list:
@@ -90,6 +106,8 @@ def main(args):
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
         streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
+        print(f"[DEBUG] image_tensor now: {image_tensor}\n shape: {image_tensor.shape}")
+
         with torch.inference_mode():
             output_ids = model.generate(
                 input_ids,
@@ -122,4 +140,5 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--image-aspect-ratio", type=str, default='pad')
     args = parser.parse_args()
-    main(args)
+    debug_test(args)
+    # main(args)
