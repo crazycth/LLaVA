@@ -1,0 +1,1 @@
+python -m llava.serve.cli     --model-path /root/code/LLaVA/checkpoints/flamingo     --image-file pic.png > out2

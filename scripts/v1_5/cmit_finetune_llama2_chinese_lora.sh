@@ -1,7 +1,6 @@
 #!/bin/bash
 
 deepspeed llava/train/train.py \
-    --lora_enable True --lora_r 128 --lora_alpha 256 --mm_projector_lr 2e-5 \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path /remote-home/ThCheng/weights/Atom_7B_chat \
     --version  llava_llama_2 \
@@ -17,7 +16,7 @@ deepspeed llava/train/train.py \
     --bf16 False \
     --fp16 True \
     --bits 16 \
-    --output_dir ./checkpoints/llava-v1.5-13b-lora \
+    --output_dir /root/code/LLaVA/checkpoints/flamingo \
     --num_train_epochs 1 \
     --per_device_train_batch_size 3 \
     --per_device_eval_batch_size 1 \
