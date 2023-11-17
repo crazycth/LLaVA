@@ -74,6 +74,7 @@ class DataArguments:
     image_folder: Optional[str] = field(default=None)
     image_aspect_ratio: str = 'square'
     image_grid_pinpoints: Optional[str] = field(default=None)
+    mm_use_im_start_end: Optional[bool] = True
 
 
 @dataclass
@@ -157,6 +158,13 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
     if require_grad_only:
         to_return = {k: t for k, t in to_return.items() if t.requires_grad}
     to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
+    return to_return
+
+def get_medical_finetune_maybe_Zero_3(named_paras, require_grad_only=True):
+    to_return = {k:t for k, t in named_paras}
+    if require_grad_only:
+        to_return = {k:t for k,t in to_return.items() if t.requires_grad}
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k,v in to_return.items()}
     return to_return
 
 
@@ -674,6 +682,8 @@ class LazySupervisedDataset(Dataset):
             image_folder = self.data_args.image_folder
             processor = self.data_args.image_processor
 
+            print(f"[DEBUG] processor: {processor}")
+
             for each_image in image_files:
                 images_each = []
                 for image_file in each_image:
@@ -681,6 +691,8 @@ class LazySupervisedDataset(Dataset):
                     image = Image.fromarray(dcm.pixel_array).convert('RGB')
 
                     if self.data_args.image_aspect_ratio == 'pad':
+                        print(f"[DEBUG] pad branch")
+                        print(f"[DEBUG] self.data_args: {self.data_args}")
                         def expand2square(pil_img, background_color):
                             width, height = pil_img.size
                             if width == height:
@@ -779,15 +791,17 @@ def train():
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    local_rank = training_args.local_rank
+    compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
+
     rank0_print(f"[INFO] model_args: {model_args}")
     rank0_print(f"[INFO] data_args: {data_args}")
     rank0_print(f"[INFO] train_args: {training_args}")
 
-    local_rank = training_args.local_rank
-    compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
 
     # bitsandbytes 量化
     bnb_model_from_pretrained_args = {}
+
     if training_args.bits in [4, 8]:
         from transformers import BitsAndBytesConfig
         bnb_model_from_pretrained_args.update(dict(
@@ -863,6 +877,7 @@ def train():
             if training_args.fp16:
                 model.to(torch.float16)
         rank0_print("Adding LoRA adapters...")
+        rank0_print(f"[DEBUG] model is now: {model}")
         model = get_peft_model(model, lora_config)
 
     #Tokenizer 管理
@@ -915,6 +930,7 @@ def train():
 
         model.config.tune_mm_mlp_adapter = training_args.tune_mm_mlp_adapter = model_args.tune_mm_mlp_adapter
         if model_args.tune_mm_mlp_adapter:
+            print(f"[INFO] tune_mm_mlp_adatper")
             model.requires_grad_(False)
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = True
@@ -923,10 +939,14 @@ def train():
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
         if training_args.freeze_mm_mlp_adapter:
+            print(f"[INFO] freeze mm_mlp adapter")
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = False
             for p in model.get_model().perceiver.parameters():
                 p.requires_grad = False
+        
+        for name, para in model.named_parameters():
+            print(f"[INFO] paramerter: {name}, Froze: {not para.requires_grad}")
            
         if training_args.bits in [4, 8]:
             model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
@@ -949,6 +969,11 @@ def train():
                 if hasattr(module, 'weight'):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
+    
+    model.to(dtype=torch.float16,device=training_args.device)
+    # print(f"[INFO] perceiver: {model.perceiver}")
+    # model.perceiver.to(detype=torch.bfloat16, device=training_args.device)
+    # print(f"[INFO] perceiver: {model.perceiver}")
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
@@ -956,6 +981,23 @@ def train():
                     tokenizer=tokenizer,
                     args=training_args,
                     **data_module)
+    
+    # #Medical branch
+    # print(f"[INFO] model: {model}")
+
+    # trainer.train()
+    # trainer.save_state()
+
+    # state_dict = get_medical_finetune_maybe_Zero_3(model.named_parameters(),require_grad_only=True)
+    # print(f"[INFO] medical_state_dict: {state_dict}")
+    # if training_args.local_rank == 0 or training_args.local_rank == -1:
+    #     tokenizer.save_pretrained(training_args.output_dir)
+    #     model.config.save_pretrained(training_args.output_dir)
+    #     model.save_pretrained(training_args.output_dir, state_dict=state_dict)
+
+    
+    # print(f"[INFO] Medical save done, finish")
+    # exit(0)
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
@@ -964,6 +1006,17 @@ def train():
     trainer.save_state()
 
     model.config.use_cache = True
+
+    #Medical branch
+    state_dict = get_medical_finetune_maybe_Zero_3(model.named_parameters())
+    print(f"[INFO] medical_state_dict: {state_dict}")
+    if training_args.local_rank == 0 or training_args.local_rank == -1:
+        model.config.save_pretrained(training_args.output_dir)
+        model.save_pretrained(training_args.output_dir, state_dict=state_dict)
+
+    
+    print(f"[INFO] Medical save done, finish")
+    exit(0)
 
     if training_args.lora_enable:
         state_dict = get_peft_state_maybe_zero_3(
