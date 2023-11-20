@@ -35,6 +35,7 @@ from llava.model import *
 from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
+import pydicom
 
 
 local_rank = None
@@ -157,6 +158,14 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
 def get_mm_adapter_state_maybe_zero_3(named_params, keys_to_match):
     to_return = {k: t for k, t in named_params if any(key_match in k for key_match in keys_to_match)}
     to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
+    return to_return
+
+
+def get_medical_finetune_maybe_Zero_3(named_paras, require_grad_only=True):
+    to_return = {k:t for k, t in named_paras}
+    if require_grad_only:
+        to_return = {k:t for k,t in to_return.items() if t.requires_grad}
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k,v in to_return.items()}
     return to_return
 
 
@@ -663,27 +672,44 @@ class LazySupervisedDataset(Dataset):
             sources = [sources]
         assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
         if 'image' in sources[0]:
-            image_file = self.list_data_dict[i]['image']
+            images = []
+            image_files = self.list_data_dict[i]['image']
             image_folder = self.data_args.image_folder
             processor = self.data_args.image_processor
-            image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
-            if self.data_args.image_aspect_ratio == 'pad':
-                def expand2square(pil_img, background_color):
-                    width, height = pil_img.size
-                    if width == height:
-                        return pil_img
-                    elif width > height:
-                        result = Image.new(pil_img.mode, (width, width), background_color)
-                        result.paste(pil_img, (0, (width - height) // 2))
-                        return result
+
+            # print(f"[DEBUG] processor: {processor}")
+
+            for each_image in image_files:
+                images_each = []
+                for image_file in each_image:
+                    dcm = pydicom.dcmread(os.path.join(image_folder, image_file))
+                    image = Image.fromarray(dcm.pixel_array).convert('RGB')
+
+                    if self.data_args.image_aspect_ratio == 'pad':
+                        # print(f"[DEBUG] pad branch")
+                        # print(f"[DEBUG] self.data_args: {self.data_args}")
+                        def expand2square(pil_img, background_color):
+                            width, height = pil_img.size
+                            if width == height:
+                                return pil_img
+                            elif width > height:
+                                result = Image.new(pil_img.mode, (width, width), background_color)
+                                result.paste(pil_img, (0, (width - height) // 2))
+                                return result
+                            else:
+                                result = Image.new(pil_img.mode, (height, height), background_color)
+                                result.paste(pil_img, ((height - width) // 2, 0))
+                                return result
+                        image = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
+                        image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
                     else:
-                        result = Image.new(pil_img.mode, (height, height), background_color)
-                        result.paste(pil_img, ((height - width) // 2, 0))
-                        return result
-                image = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
-                image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
-            else:
-                image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+                        image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+                    image = image.unsqueeze(0)
+                    images_each.append(image)
+                images_each = torch.cat([image for image in images_each], dim = 0)
+                images_each = images_each.unsqueeze(0)
+                images.append(images_each)
+            images = torch.cat([image for image in images], dim=0)
             sources = preprocess_multimodal(
                 copy.deepcopy([e["conversations"] for e in sources]),
                 self.data_args)
@@ -699,12 +725,13 @@ class LazySupervisedDataset(Dataset):
 
         # image exist in the data
         if 'image' in self.list_data_dict[i]:
-            data_dict['images'] = image
+            data_dict['image'] = images
         elif self.data_args.is_multimodal:
             # image does not exist in the data, but the model is multimodal
             crop_size = self.data_args.image_processor.crop_size
-            data_dict['images'] = torch.zeros(3, crop_size['height'], crop_size['width'])
+            data_dict['image'] = torch.zeros(3, crop_size['height'], crop_size['width'])
         return data_dict
+
 
 
 @dataclass
@@ -892,10 +919,14 @@ def train():
             model.requires_grad_(False)
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = True
+            for p in model.get_model().perceiver.parameters():
+                p.requires_grad = True
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
         if training_args.freeze_mm_mlp_adapter:
             for p in model.get_model().mm_projector.parameters():
+                p.requires_grad = False
+            for p in model.get_model().perceiver.parameters():
                 p.requires_grad = False
 
         if training_args.bits in [4, 8]:
@@ -919,6 +950,8 @@ def train():
                 if hasattr(module, 'weight'):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
+    
+    model.to(dtype=torch.float16, device=training_args.device)
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
@@ -934,6 +967,17 @@ def train():
     trainer.save_state()
 
     model.config.use_cache = True
+
+     #Medical branch
+    state_dict = get_medical_finetune_maybe_Zero_3(model.named_parameters())
+    print(f"[INFO] medical_state_dict: {state_dict}")
+    if training_args.local_rank == 0 or training_args.local_rank == -1:
+        model.config.save_pretrained(training_args.output_dir)
+        model.save_pretrained(training_args.output_dir, state_dict=state_dict)
+
+
+    print(f"[INFO] Medical save done, finish")
+    exit(0)
 
     if training_args.lora_enable:
         state_dict = get_peft_state_maybe_zero_3(

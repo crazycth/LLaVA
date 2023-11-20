@@ -3,7 +3,7 @@ import torch
 
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from llava.conversation import conv_templates, SeparatorStyle
-from llava.model.builder import load_pretrained_model
+from llava.model.builder import load_pretrained_model, load_medical_model
 from llava.utils import disable_torch_init
 from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
 
@@ -13,6 +13,127 @@ import requests
 from PIL import Image
 from io import BytesIO
 from transformers import TextStreamer
+from llava.serve.utils import load_medical_image
+
+data_point = {
+      "id": "1.2.840.113619.2.437.3.2831177020.5.1648186977.789",
+      "image": [
+         [
+            "medical_images/SRS00002/IMG00000.DCM",
+            "medical_images/SRS00002/IMG00001.DCM",
+            "medical_images/SRS00002/IMG00002.DCM",
+            "medical_images/SRS00002/IMG00003.DCM",
+            "medical_images/SRS00002/IMG00004.DCM",
+            "medical_images/SRS00002/IMG00005.DCM",
+            "medical_images/SRS00002/IMG00006.DCM",
+            "medical_images/SRS00002/IMG00007.DCM",
+            "medical_images/SRS00002/IMG00008.DCM",
+            "medical_images/SRS00002/IMG00009.DCM",
+            "medical_images/SRS00002/IMG00010.DCM",
+            "medical_images/SRS00002/IMG00011.DCM",
+            "medical_images/SRS00002/IMG00012.DCM",
+            "medical_images/SRS00002/IMG00013.DCM",
+            "medical_images/SRS00002/IMG00014.DCM",
+            "medical_images/SRS00002/IMG00015.DCM",
+            "medical_images/SRS00002/IMG00016.DCM",
+            "medical_images/SRS00002/IMG00017.DCM",
+            "medical_images/SRS00002/IMG00018.DCM",
+            "medical_images/SRS00002/IMG00019.DCM",
+            "medical_images/SRS00002/IMG00020.DCM",
+            "medical_images/SRS00002/IMG00021.DCM"
+         ],
+         [
+            "medical_images/SRS00002/IMG00000.DCM",
+            "medical_images/SRS00002/IMG00001.DCM",
+            "medical_images/SRS00002/IMG00002.DCM",
+            "medical_images/SRS00002/IMG00003.DCM",
+            "medical_images/SRS00002/IMG00004.DCM",
+            "medical_images/SRS00002/IMG00005.DCM",
+            "medical_images/SRS00002/IMG00006.DCM",
+            "medical_images/SRS00002/IMG00007.DCM",
+            "medical_images/SRS00002/IMG00008.DCM",
+            "medical_images/SRS00002/IMG00009.DCM",
+            "medical_images/SRS00002/IMG00010.DCM",
+            "medical_images/SRS00002/IMG00011.DCM",
+            "medical_images/SRS00002/IMG00012.DCM",
+            "medical_images/SRS00002/IMG00013.DCM",
+            "medical_images/SRS00002/IMG00014.DCM",
+            "medical_images/SRS00002/IMG00015.DCM",
+            "medical_images/SRS00002/IMG00016.DCM",
+            "medical_images/SRS00002/IMG00017.DCM",
+            "medical_images/SRS00002/IMG00018.DCM",
+            "medical_images/SRS00002/IMG00019.DCM",
+            "medical_images/SRS00002/IMG00020.DCM",
+            "medical_images/SRS00002/IMG00021.DCM"
+         ],
+         [
+            "medical_images/SRS00002/IMG00000.DCM",
+            "medical_images/SRS00002/IMG00001.DCM",
+            "medical_images/SRS00002/IMG00002.DCM",
+            "medical_images/SRS00002/IMG00003.DCM",
+            "medical_images/SRS00002/IMG00004.DCM",
+            "medical_images/SRS00002/IMG00005.DCM",
+            "medical_images/SRS00002/IMG00006.DCM",
+            "medical_images/SRS00002/IMG00007.DCM",
+            "medical_images/SRS00002/IMG00008.DCM",
+            "medical_images/SRS00002/IMG00009.DCM",
+            "medical_images/SRS00002/IMG00010.DCM",
+            "medical_images/SRS00002/IMG00011.DCM",
+            "medical_images/SRS00002/IMG00012.DCM",
+            "medical_images/SRS00002/IMG00013.DCM",
+            "medical_images/SRS00002/IMG00014.DCM",
+            "medical_images/SRS00002/IMG00015.DCM",
+            "medical_images/SRS00002/IMG00016.DCM",
+            "medical_images/SRS00002/IMG00017.DCM",
+            "medical_images/SRS00002/IMG00018.DCM",
+            "medical_images/SRS00002/IMG00019.DCM",
+            "medical_images/SRS00002/IMG00020.DCM",
+            "medical_images/SRS00002/IMG00021.DCM"
+         ],
+         [
+            "medical_images/SRS00002/IMG00000.DCM",
+            "medical_images/SRS00002/IMG00001.DCM",
+            "medical_images/SRS00002/IMG00002.DCM",
+            "medical_images/SRS00002/IMG00003.DCM",
+            "medical_images/SRS00002/IMG00004.DCM",
+            "medical_images/SRS00002/IMG00005.DCM",
+            "medical_images/SRS00002/IMG00006.DCM",
+            "medical_images/SRS00002/IMG00007.DCM",
+            "medical_images/SRS00002/IMG00008.DCM",
+            "medical_images/SRS00002/IMG00009.DCM",
+            "medical_images/SRS00002/IMG00010.DCM",
+            "medical_images/SRS00002/IMG00011.DCM",
+            "medical_images/SRS00002/IMG00012.DCM",
+            "medical_images/SRS00002/IMG00013.DCM",
+            "medical_images/SRS00002/IMG00014.DCM",
+            "medical_images/SRS00002/IMG00015.DCM",
+            "medical_images/SRS00002/IMG00016.DCM",
+            "medical_images/SRS00002/IMG00017.DCM",
+            "medical_images/SRS00002/IMG00018.DCM",
+            "medical_images/SRS00002/IMG00019.DCM",
+            "medical_images/SRS00002/IMG00020.DCM",
+            "medical_images/SRS00002/IMG00021.DCM"
+         ]
+      ],
+      "conversations": [
+         {
+            "from": "human",
+            "value": "<image><image>This photo is 2023.6.1. Render a clear and concise summary of the photo.\n"
+         },
+         {
+            "from": "gpt",
+            "value": "select luxury furniture 3 - inch gel memory foam mattress topper"
+         },
+         {
+            "from": "human",
+            "value": "<image><image>This photo is 2023.6.7. Render a clear and concise summary of the photo.\n"
+         },
+         {
+            "from": "gpt",
+            "value": "Compared to 6.1. select luxury furniture 3 - inch gel memory foam mattress topper"
+         }
+      ]
+}
 
 
 def load_image(image_file):
@@ -24,13 +145,41 @@ def load_image(image_file):
     return image
 
 
+def debug_test(args):
+    # Model
+    disable_torch_init()
+
+    model_name = get_model_name_from_path(args.model_path)
+    print(f"[INFO] model_name: {model_name}, model_path: {args.model_path}, model_base:{args.model_base}")
+    # tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
+    tokenizer, model, image_processor, context_len = load_medical_model(args.model_path, model_name, device=args.device)
+
+    print(f"[INFO] start load medical _image")
+    print(f"[INFO] image_processor: {image_processor}")
+    medical_image_tensor = load_medical_image(
+        source=data_point,
+        image_folder="/root/code/LLaVA",
+        processor=image_processor,
+        tokenizer=tokenizer
+    )
+
+    print(f"[DEBUG] medical_image_tensor: {medical_image_tensor['image'].shape}")
+
+
+    print(model)
+
+    for name,para in model.named_parameters():
+        print(name, para)
+
+
 def main(args):
     # Model
     disable_torch_init()
 
     model_name = get_model_name_from_path(args.model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
-
+    # tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
+    # tokenizer, model, image_processor, context_len = load_medical_model(args.model_path)
+    tokenizer, model, image_processor, context_len = load_medical_model(args.model_path, model_name, device=args.device)
     if 'llama-2' in model_name.lower():
         conv_mode = "llava_llama_2"
     elif "v1" in model_name.lower():
@@ -51,13 +200,30 @@ def main(args):
     else:
         roles = conv.roles
 
-    image = load_image(args.image_file)
+    # image = load_image(args.image_file)
+
+    image_tensor = load_medical_image(
+        source=data_point,
+        image_folder="./",
+        processor=image_processor,
+        tokenizer=tokenizer
+    )
+
+
+    print(f"[INFO] model_device: {model.device}")
+
+    image = image_tensor['image'].to(model.device, dtype=torch.float16)
+
+    # print(f"[DEBUG] image_processor: {image_processor}")
+
     # Similar operation in model_worker.py
-    image_tensor = process_images([image], image_processor, model.config)
-    if type(image_tensor) is list:
-        image_tensor = [image.to(model.device, dtype=torch.float16) for image in image_tensor]
-    else:
-        image_tensor = image_tensor.to(model.device, dtype=torch.float16)
+    # image_tensor = process_images([image], image_processor, args)
+    # if type(image_tensor) is list:
+    #     image_tensor = [image.to(model.device, dtype=torch.float16) for image in image_tensor]
+    # else:
+    #     image_tensor = image_tensor.to(model.device, dtype=torch.float16)
+    
+    print(f"[INFO] image_tensor shape: {image.shape}")
 
     while True:
         try:
@@ -84,17 +250,19 @@ def main(args):
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
-        input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(model.device)
+        input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
         keywords = [stop_str]
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
         streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
+        # print(f"[DEBUG] image_tensor now: {image_tensor}\n shape: {image_tensor.shape}")    #[1,3,336,336]
+
         with torch.inference_mode():
             output_ids = model.generate(
                 input_ids,
-                images=image_tensor,
-                do_sample=True if args.temperature > 0 else False,
+                images=image,
+                do_sample=True,
                 temperature=args.temperature,
                 max_new_tokens=args.max_new_tokens,
                 streamer=streamer,
@@ -120,5 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--image-aspect-ratio", type=str, default='pad')
     args = parser.parse_args()
+    # debug_test(args)
     main(args)
