@@ -165,14 +165,8 @@ class LlavaMetaForCausalLM(ABC):
             # torch.size([1，32，4096])
             # torch.size([2，32，4096])
 
-
-        if type(images) is list or images.ndim == 5:
-            concat_images = torch.cat([image for image in images], dim=0)
-            image_features = self.encode_images(concat_images)
-            split_sizes = [image.shape[0] for image in images]
-            image_features = torch.split(image_features, split_sizes, dim=0)
-            image_features = [x.flatten(0, 1).to(self.device) for x in image_features]
         else:
+            # print(f"[INFO] null image branch!")
             image_features = self.encode_images(images).to(self.device)
 
         # TODO: image start / end is not implemented here to support pretraining.
@@ -232,7 +226,7 @@ class LlavaMetaForCausalLM(ABC):
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
                 if i < num_images:
-                    cur_image_features = image_features[cur_image_idx][image_num_idx,:,:]
+                    cur_image_features = image_features[batch_idx][image_num_idx,:,:]
                     cur_image_idx += 1
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
