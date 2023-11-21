@@ -33,10 +33,11 @@ class LlavaMetaModel:
             print("[DEBUG] mm_vision_tower True")
             self.vision_tower = build_vision_tower(config, delay_load=True)
             self.mm_projector = build_vision_projector(config)
+            self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=32, max_num_media=4, max_num_frames=22)
         else:
             print("[DEBUG] mm_vision_tower False")
         
-        self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=32, max_num_media=4, max_num_frames=22)
+        
 
     def get_vision_tower(self):
         vision_tower = getattr(self, 'vision_tower', None)
@@ -74,10 +75,14 @@ class LlavaMetaModel:
 
         if getattr(self, 'mm_projector', None) is None:
             self.mm_projector = build_vision_projector(self.config)
+            self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=32, max_num_media=4, max_num_frames=22)
         else:
             # In case it is frozen by LoRA
             for p in self.mm_projector.parameters():
                 p.requires_grad = True
+            for p in self.perceiver.parameters():
+                p.requires_grad = True
+
 
         # perceiver_token_num = model_args.perceiver_token_num
         # perceiver_max_frames = model_args.perceiver_max_frames

@@ -177,7 +177,12 @@ def main(args):
     disable_torch_init()
 
     model_name = get_model_name_from_path(args.model_path)
-    tokenizer, model, image_processor, context_len = load_medical_model(args.model_path, model_name, device=args.device)
+
+    if args.model_base:
+        tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
+        tokenizer.pad_token = tokenizer.unk_token
+    else:
+        tokenizer, model, image_processor, context_len = load_medical_model(args.model_path, model_name, device=args.device)
 
     conv_mode = "llava_llama_2"
     args.conv_mode = conv_mode
@@ -213,6 +218,7 @@ def main(args):
     image = torch.unsqueeze(image, dim=0)
     print(f"[INFO] image_tensor shape: {image.shape}")
 
+    flag_count = 0
     while True:
         try:
             inp = input(f"{roles[0]}: ")
@@ -226,8 +232,9 @@ def main(args):
 
         if image is not None:
             inp_total = ""
-            for _ in range(image_num):
-                inp_total += DEFAULT_IMAGE_TOKEN
+            if flag_count == 0:
+                for _ in range(image_num):
+                    inp_total += DEFAULT_IMAGE_TOKEN
             inp_total += inp
             conv.append_message(conv.roles[0],inp_total)
             # first message
@@ -241,6 +248,7 @@ def main(args):
             conv.append_message(conv.roles[0], inp)
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
+        flag_count += 1
 
         print(f"[DEBUG] prompt: {prompt}")
 
