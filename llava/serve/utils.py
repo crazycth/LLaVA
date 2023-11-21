@@ -10,9 +10,6 @@ data_args_instance = DataArguments(
     lazy_preprocess=True,
     is_multimodal=True,
     image_aspect_ratio='pad',
-    image_grid_pinpoints=None,
-    image_folder='root/code/LLaVA',
-    mm_use_im_start_end=True
 )
 
 def load_medical_image(source:Dict, image_folder:str, processor, tokenizer) -> Dict[str, torch.Tensor]:
@@ -53,6 +50,7 @@ def load_medical_image(source:Dict, image_folder:str, processor, tokenizer) -> D
         
         images = torch.cat([image for image in images], dim=0)
 
+        data_args_instance.mm_use_im_start_end = False
         source = preprocess_multimodal(
             copy.deepcopy([source["conversations"]]), data_args=data_args_instance
         )

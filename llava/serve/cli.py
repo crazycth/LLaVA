@@ -177,22 +177,23 @@ def main(args):
     disable_torch_init()
 
     model_name = get_model_name_from_path(args.model_path)
-    # tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
-    # tokenizer, model, image_processor, context_len = load_medical_model(args.model_path)
     tokenizer, model, image_processor, context_len = load_medical_model(args.model_path, model_name, device=args.device)
-    if 'llama-2' in model_name.lower():
-        conv_mode = "llava_llama_2"
-    elif "v1" in model_name.lower():
-        conv_mode = "llava_v1"
-    elif "mpt" in model_name.lower():
-        conv_mode = "mpt"
-    else:
-        conv_mode = "llava_v0"
 
-    if args.conv_mode is not None and conv_mode != args.conv_mode:
-        print('[WARNING] the auto inferred conversation mode is {}, while `--conv-mode` is {}, using {}'.format(conv_mode, args.conv_mode, args.conv_mode))
-    else:
-        args.conv_mode = conv_mode
+    conv_mode = "llava_llama_2"
+    args.conv_mode = conv_mode
+    # if 'llama-2' in model_name.lower():
+    #     conv_mode = "llava_llama_2"
+    # elif "v1" in model_name.lower():
+    #     conv_mode = "llava_v1"
+    # elif "mpt" in model_name.lower():
+    #     conv_mode = "mpt"
+    # else:
+    #     conv_mode = "llava_v0"
+
+    # if args.conv_mode is not None and conv_mode != args.conv_mode:
+    #     print('[WARNING] the auto inferred conversation mode is {}, while `--conv-mode` is {}, using {}'.format(conv_mode, args.conv_mode, args.conv_mode))
+    # else:
+    #     args.conv_mode = conv_mode
 
     conv = conv_templates[args.conv_mode].copy()
     if "mpt" in model_name.lower():
@@ -200,29 +201,16 @@ def main(args):
     else:
         roles = conv.roles
 
-    # image = load_image(args.image_file)
-
     image_tensor = load_medical_image(
         source=data_point,
-        image_folder="/root/code/LLaVA",
+        image_folder="./",
         processor=image_processor,
         tokenizer=tokenizer
     )
 
-
-    print(f"[INFO] model_device: {model.device}")
-
     image = image_tensor['image'].to(model.device, dtype=torch.float16)
-
-    # print(f"[DEBUG] image_processor: {image_processor}")
-
-    # Similar operation in model_worker.py
-    # image_tensor = process_images([image], image_processor, args)
-    # if type(image_tensor) is list:
-    #     image_tensor = [image.to(model.device, dtype=torch.float16) for image in image_tensor]
-    # else:
-    #     image_tensor = image_tensor.to(model.device, dtype=torch.float16)
-    
+    image_num = image.shape[0]
+    image = torch.unsqueeze(image, dim=0)
     print(f"[INFO] image_tensor shape: {image.shape}")
 
     while True:
@@ -237,18 +225,24 @@ def main(args):
         print(f"{roles[1]}: ", end="")
 
         if image is not None:
+            inp_total = ""
+            for _ in range(image_num):
+                inp_total += DEFAULT_IMAGE_TOKEN
+            inp_total += inp
+            conv.append_message(conv.roles[0],inp_total)
             # first message
-            if model.config.mm_use_im_start_end:
-                inp = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + inp
-            else:
-                inp = DEFAULT_IMAGE_TOKEN + '\n' + inp
-            conv.append_message(conv.roles[0], inp)
-            image = None
+            # if model.config.mm_use_im_start_end:
+            #     inp = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + inp
+            # else:
+            #     inp = DEFAULT_IMAGE_TOKEN + '\n' + inp
+            # conv.append_message(conv.roles[0], inp)
         else:
             # later messages
             conv.append_message(conv.roles[0], inp)
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
+
+        print(f"[DEBUG] prompt: {prompt}")
 
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
@@ -280,7 +274,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
     parser.add_argument("--model-base", type=str, default=None)
-    parser.add_argument("--image-file", type=str, required=True)
+    parser.add_argument("--image-file", type=str, required=False)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--conv-mode", type=str, default=None)
     parser.add_argument("--temperature", type=float, default=0.2)

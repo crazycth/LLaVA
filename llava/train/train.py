@@ -74,7 +74,7 @@ class DataArguments:
     image_folder: Optional[str] = field(default=None)
     image_aspect_ratio: str = 'square'
     image_grid_pinpoints: Optional[str] = field(default=None)
-    mm_use_im_start_end: Optional[bool] = True
+    # mm_use_im_start_end: Optional[bool] = True
 
 
 @dataclass

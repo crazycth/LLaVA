@@ -83,6 +83,7 @@ class LlavaMetaModel:
         # perceiver_max_frames = model_args.perceiver_max_frames
         # perceiver_max_image = model_args.perceiver_max_image
         # self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=perceiver_token_num, max_num_media=perceiver_max_image, max_num_frames= perceiver_max_frames)
+        # self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=32, max_num_media=4, max_num_frames=22)
 
 
         if pretrain_mm_mlp_adapter is not None:
