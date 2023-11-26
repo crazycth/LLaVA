@@ -682,7 +682,7 @@ class LazySupervisedDataset(Dataset):
             image_folder = self.data_args.image_folder
             processor = self.data_args.image_processor
 
-            print(f"[DEBUG] processor: {processor}")
+            # print(f"[DEBUG] processor: {processor}")
 
             for each_image in image_files:
                 images_each = []
@@ -691,8 +691,8 @@ class LazySupervisedDataset(Dataset):
                     image = Image.fromarray(dcm.pixel_array).convert('RGB')
 
                     if self.data_args.image_aspect_ratio == 'pad':
-                        print(f"[DEBUG] pad branch")
-                        print(f"[DEBUG] self.data_args: {self.data_args}")
+                        # print(f"[DEBUG] pad branch")
+                        # print(f"[DEBUG] self.data_args: {self.data_args}")
                         def expand2square(pil_img, background_color):
                             width, height = pil_img.size
                             if width == height:
