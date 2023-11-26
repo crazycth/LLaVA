@@ -33,7 +33,7 @@ class LlavaMetaModel:
             print("[DEBUG] mm_vision_tower True")
             self.vision_tower = build_vision_tower(config, delay_load=True)
             self.mm_projector = build_vision_projector(config)
-            self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=32, max_num_media=4, max_num_frames=22)
+            self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=self.config.perceiver_token_num, max_num_media=self.config.perceiver_max_image, max_num_frames=self.config.perceiver_max_frames)
         else:
             print("[DEBUG] mm_vision_tower False")
         
@@ -50,6 +50,10 @@ class LlavaMetaModel:
         mm_vision_select_layer = model_args.mm_vision_select_layer
         mm_vision_select_feature = model_args.mm_vision_select_feature
         pretrain_mm_mlp_adapter = model_args.pretrain_mm_mlp_adapter
+
+        perceiver_token_num = model_args.perceiver_token_num
+        perceiver_max_frames = model_args.perceiver_max_frames
+        perceiver_max_image = model_args.perceiver_max_image
 
         self.config.mm_vision_tower = vision_tower
 
@@ -73,9 +77,13 @@ class LlavaMetaModel:
         self.config.mm_vision_select_layer = mm_vision_select_layer
         self.config.mm_vision_select_feature = mm_vision_select_feature
 
+        self.config.perceiver_token_num = perceiver_token_num
+        self.config.perceiver_max_frames = perceiver_max_frames
+        self.config.perceiver_max_image = perceiver_max_image
+
         if getattr(self, 'mm_projector', None) is None:
             self.mm_projector = build_vision_projector(self.config)
-            self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=32, max_num_media=4, max_num_frames=22)
+            self.perceiver = PerceiverResampler(dim=self.config.hidden_size, num_latents=self.config.perceiver_token_num, max_num_media=self.config.perceiver_max_image, max_num_frames=self.config.perceiver_max_frames)
         else:
             # In case it is frozen by LoRA
             for p in self.mm_projector.parameters():
